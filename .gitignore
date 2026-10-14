@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Temporary scratch and browser files
+scratch/
+.virtual_documents/
+
+# Unused large files and archives
+frontend/heart.glb
+frontend/index_backup.html
+frontend/index_enhanced.html
+cardiorisk_outputs.zip
+*.zip
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db

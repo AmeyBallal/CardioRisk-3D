@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CardioRisk 3D Dashboard</title>
+    <style>
+        body { 
+            margin: 0; overflow: hidden; 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+            color: #f8fafc; 
+        }
+        
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        .glass-panel {
+            position: absolute; top: 0; height: 100vh;
+            background: rgba(15, 23, 42, 0.75); 
+            z-index: 2; padding: 30px 25px; overflow-y: auto; box-sizing: border-box;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        #ui-panel { left: 0; width: 380px; border-right: 1px solid rgba(255, 255, 255, 0.1); }
+        #results-panel { right: 0; width: 420px; border-left: 1px solid rgba(255, 255, 255, 0.1); }
+
+        h2 { 
+            margin-top: 0; color: #38bdf8; font-weight: 600; 
+            border-bottom: 2px solid rgba(56, 189, 248, 0.3); 
+            padding-bottom: 12px; font-size: 24px; letter-spacing: 0.5px;
+        }
+
+        .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 20px; line-height: 1.5; }
+
+        /* Section headers inside form */
+        .form-section {
+            font-size: 10px; font-weight: 700; color: #38bdf8;
+            text-transform: uppercase; letter-spacing: 2px;
+            margin: 22px 0 10px 0;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .form-section::after {
+            content: ""; flex: 1; height: 1px;
+            background: rgba(56, 189, 248, 0.2);
+        }
+
+        .form-group { margin-bottom: 14px; }
+        label { 
+            display: flex; justify-content: space-between; align-items: baseline;
+            margin-bottom: 6px; font-size: 13px; font-weight: 500; color: #cbd5e1; 
+        }
+        .label-range { 
+            font-size: 11px; font-weight: 500; color: #38bdf8; 
+            letter-spacing: 0.3px; white-space: nowrap;
+            background: rgba(56, 189, 248, 0.08);
+            padding: 2px 7px;
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        input, select {
+            width: 100%; padding: 10px 12px; box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.3); border: 1px solid #334155; 
+            color: white; border-radius: 6px; font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        input:focus, select:focus {
+            outline: none; border-color: #38bdf8; 
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+        }
+
+        button {
+            width: 100%; padding: 14px; background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+            color: white; border: none; border-radius: 8px; font-weight: 600; 
+            cursor: pointer; margin-top: 25px; font-size: 16px; 
+            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.4);
+            transition: transform 0.1s, box-shadow 0.2s;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(14, 165, 233, 0.6); }
+
+        /* UPGRADED Premium Results UI */
+        .risk-item { 
+            margin-bottom: 20px; 
+            background: linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); 
+            padding: 22px; 
+            border-radius: 16px; 
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .risk-item::before {
+            content: ""; position: absolute;
+            top: 0; left: 0; width: 6px; height: 100%;
+            background: var(--risk-color);
+            box-shadow: 0 0 15px var(--risk-color);
+        }
+
+        .risk-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .risk-label { font-size: 18px; font-weight: 700; letter-spacing: 1px; color: #f8fafc; }
+        .risk-value { font-weight: 800; font-size: 34px; text-shadow: 0 0 15px rgba(255,255,255,0.1); }
+        .risk-desc { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px;}
+        
+        .risk-bar-bg { 
+            width: 100%; height: 8px; background: rgba(0,0,0,0.6); 
+            border-radius: 10px; overflow: hidden; 
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+        }
+        .risk-bar-fill { 
+            height: 100%; width: 0%; 
+            border-radius: 10px;
+            transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1), background 1.5s ease; 
+        }
+        
+        .legend {
+            margin-top: 30px; font-size: 13px; color: #94a3b8; 
+            background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px;
+        }
+        .legend p { margin: 6px 0; display: flex; align-items: center; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 10px; }
+
+        /* Circular Animation Styles for Overall CAD */
+        .circle-container {
+            position: relative; width: 140px; height: 140px; margin: 15px auto 10px auto;
+        }
+        .circular-progress {
+            width: 100%; height: 100%; transform: rotate(-90deg);
+        }
+        .circular-progress circle {
+            fill: none; stroke-width: 8; stroke-linecap: round;
+        }
+        .circular-progress .bg {
+            stroke: rgba(0,0,0,0.5);
+        }
+        .circular-progress .progress {
+            transition: stroke-dashoffset 2s cubic-bezier(0.4, 0, 0.2, 1), stroke 1.5s ease;
+            filter: drop-shadow(0 0 8px var(--risk-color));
+        }
+        .circle-percentage {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 32px; font-weight: 800; color: var(--risk-color);
+            text-shadow: 0 0 15px rgba(255,255,255,0.2);
+        }
+
+        /* Center Clean Title */
+        #center-title {
+            position: absolute;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #f8fafc;
+            pointer-events: none;
+            user-select: none;
+            background: rgba(15, 23, 42, 0.7);
+            padding: 10px 28px;
+            border-radius: 30px;
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4), 0 0 15px rgba(56, 189, 248, 0.1);
+        }
+
+        /* 3D Vessel Floating Badges */
+        #vessel-labels-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 5;
+            overflow: hidden;
+        }
+
+        .vessel-badge {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(15, 23, 42, 0.9);
+            padding: 8px 16px;
+            border-radius: 24px;
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(56, 189, 248, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: opacity 0.2s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+            white-space: nowrap;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .vessel-badge:hover {
+            border-color: #38bdf8;
+            box-shadow: 0 6px 25px rgba(56, 189, 248, 0.5);
+            transform: translate(-50%, -50%) scale(1.05);
+        }
+
+        .vessel-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 10px #22c55e;
+            flex-shrink: 0;
+            transition: background 0.4s ease, box-shadow 0.4s ease;
+        }
+
+        .vessel-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .vessel-header {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .vessel-tag {
+            font-size: 13px;
+            font-weight: 800;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+        }
+
+        .vessel-fullname {
+            font-size: 10px;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .vessel-score {
+            font-size: 11px;
+            font-weight: 700;
+            color: #22c55e;
+            margin-top: 1px;
+            transition: color 0.4s ease;
+        }
+
+        /* Dynamic SVG Arrow Lines & Target Dots */
+        .vessel-arrow-line {
+            transition: stroke 0.4s ease, opacity 0.2s ease;
+            filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));
+        }
+
+        .vessel-target-dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid #38bdf8;
+            background: #0ea5e9;
+            box-shadow: 0 0 10px #38bdf8, 0 0 20px rgba(56, 189, 248, 0.6);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 6;
+            transition: opacity 0.2s ease, border-color 0.4s ease, background 0.4s ease, box-shadow 0.4s ease;
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: translate(-50%, -50%) scale(0.9); }
+            50% { transform: translate(-50%, -50%) scale(1.3); }
+            100% { transform: translate(-50%, -50%) scale(0.9); }
+        }
+
+        /* 3D Model Loading Spinner */
+        #model-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 8;
+            background: rgba(15, 23, 42, 0.88);
+            padding: 16px 28px;
+            border-radius: 16px;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: #38bdf8;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .loading-spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(56, 189, 248, 0.2);
+            border-top: 2px solid #38bdf8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <h1 id="center-title">Cardiovascular Risk Prediction</h1>
+
+    <div id="model-loading">
+        <div class="loading-spinner"></div>
+        <span>Loading Anatomical Heart & Vessels...</span>
+    </div>
+
+    <!-- 3D Vessel Floating Badges & Callout Arrows -->
+    <div id="vessel-labels-container">
+        <!-- SVG Leader Lines & Arrowheads -->
+        <svg id="vessel-arrows-svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
+            <defs>
+                <marker id="arrowhead-lad" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                    <polygon points="0 1, 9 4.5, 0 8" fill="#38bdf8" id="arrow-poly-lad" />
+                </marker>
+                <marker id="arrowhead-lcx" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                    <polygon points="0 1, 9 4.5, 0 8" fill="#38bdf8" id="arrow-poly-lcx" />
+                </marker>
+                <marker id="arrowhead-rca" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                    <polygon points="0 1, 9 4.5, 0 8" fill="#38bdf8" id="arrow-poly-rca" />
+                </marker>
+            </defs>
+            <line id="arrow-line-lad" class="vessel-arrow-line" stroke="#38bdf8" stroke-width="2.5" marker-end="url(#arrowhead-lad)" />
+            <line id="arrow-line-lcx" class="vessel-arrow-line" stroke="#38bdf8" stroke-width="2.5" marker-end="url(#arrowhead-lcx)" />
+            <line id="arrow-line-rca" class="vessel-arrow-line" stroke="#38bdf8" stroke-width="2.5" marker-end="url(#arrowhead-rca)" />
+        </svg>
+
+        <!-- Target Dots on Physical Artery Tubes -->
+        <div id="target-dot-lad" class="vessel-target-dot"></div>
+        <div id="target-dot-lcx" class="vessel-target-dot"></div>
+        <div id="target-dot-rca" class="vessel-target-dot"></div>
+
+        <!-- Callout Badges -->
+        <div id="badge-lad" class="vessel-badge">
+            <span class="vessel-dot" id="dot-lad"></span>
+            <div class="vessel-info">
+                <div class="vessel-header">
+                    <span class="vessel-tag">LAD</span>
+                    <span class="vessel-fullname">Left Anterior Descending (Anterior Groove)</span>
+                </div>
+                <span class="vessel-score" id="score-lad">Healthy Baseline</span>
+            </div>
+        </div>
+
+        <div id="badge-lcx" class="vessel-badge">
+            <span class="vessel-dot" id="dot-lcx"></span>
+            <div class="vessel-info">
+                <div class="vessel-header">
+                    <span class="vessel-tag">LCX</span>
+                    <span class="vessel-fullname">Left Circumflex (Left Sulcus)</span>
+                </div>
+                <span class="vessel-score" id="score-lcx">Healthy Baseline</span>
+            </div>
+        </div>
+
+        <div id="badge-rca" class="vessel-badge">
+            <span class="vessel-dot" id="dot-rca"></span>
+            <div class="vessel-info">
+                <div class="vessel-header">
+                    <span class="vessel-tag">RCA</span>
+                    <span class="vessel-fullname">Right Coronary Artery (Right Sulcus)</span>
+                </div>
+                <span class="vessel-score" id="score-rca">Healthy Baseline</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="ui-panel" class="glass-panel">
+        <h2>Patient Profile</h2>
+        <p class="subtitle">Enter clinical parameters. Leave fields blank to let the AI automatically impute missing data based on cohort medians.</p>
+        <form id="clinical-form">
+            <div id="dynamic-fields"></div>
+            <button type="submit" id="predict-btn">Analyze Risk Profile</button>
+        </form>
+    </div>
+
+    <div id="results-panel" class="glass-panel">
+        <h2>Clinical Risk Analysis</h2>
+        <p class="subtitle">Real-time inference generated by Machine Learning Ensembles.</p>
+        
+        <div id="risks-placeholder" style="text-align: center; color: #64748b; margin-top: 80px; font-size: 15px;">
+            Awaiting patient data...
+        </div>
+        <div id="risks-container"></div>
+        
+        <div class="legend">
+            <strong style="color: white; display:block; margin-bottom:10px;">Diagnostic Guidelines:</strong>
+            <p><span class="dot" style="background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span> Green: < 30% Risk (Healthy range)</p>
+            <p><span class="dot" style="background: #eab308; box-shadow: 0 0 8px #eab308;"></span> Yellow: 30% - 50% Risk (Monitor closely)</p>
+            <p><span class="dot" style="background: #ef4444; box-shadow: 0 0 8px #ef4444;"></span> Red: > 50% Risk (High probability of Stenosis)</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        // ==========================================
+        // 1. SETUP 3D SCENE
+        // ==========================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = null; 
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 11);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.6;
+
+        // Enhanced Lighting for Anatomical Model
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+        scene.add(ambientLight);
+        
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.85);
+        dirLight1.position.set(6, 8, 6);
+        scene.add(dirLight1);
+
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.55);
+        dirLight2.position.set(-6, -4, -6);
+        scene.add(dirLight2);
+
+        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.4); 
+        rimLight.position.set(0, 8, -6);
+        scene.add(rimLight);
+
+        // ==========================================
+        // 2. LOAD REALISTIC ANATOMICAL HEART & MAP VESSELS
+        // ==========================================
+        // Exact anatomical vessel annotations directly mapped from the University of Dundee 3D model:
+        // - LAD (Pins 2 & 3): Anterior Interventricular Branch running along the anterior groove on the ventricular myocardium
+        // - LCX (Pins 4, 5, 6): Left Circumflex Branch running around the left atrioventricular sulcus
+        // - RCA (Pin 7): Right Coronary Artery running along the right coronary sulcus
+        const vesselAnchors = {};
+        const vesselOffsets = {
+            'LAD': { dx: 165, dy: 65 },
+            'LCX': { dx: 165, dy: -65 },
+            'RCA': { dx: -165, dy: -15 }
+        };
+
+        const loader = new THREE.GLTFLoader();
+        let downloadedHeartMesh = null;
+        const loadingIndicator = document.getElementById('model-loading');
+        
+        loader.load('human_heart.glb', function(gltf) {
+            downloadedHeartMesh = gltf.scene;
+
+            // Preserve all original textures, materials, and colors intact without modification
+            // Center & normalize model dimensions
+            const box = new THREE.Box3().setFromObject(downloadedHeartMesh);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 5.2 / maxDim; 
+            
+            downloadedHeartMesh.position.sub(center.multiplyScalar(scale));
+            downloadedHeartMesh.scale.setScalar(scale);
+            scene.add(downloadedHeartMesh);
+
+            // Locate node containing the mesh objects
+            const arteryParent = downloadedHeartMesh.getObjectByName("SubTool-0-12100944.OBJ") || 
+                                 downloadedHeartMesh.getObjectByName("Object_17")?.parent || 
+                                 downloadedHeartMesh;
+
+            // Pin 2 (LAD): Anterior Interventricular Branch on the front ventricular muscle groove
+            const ladAnchor = new THREE.Object3D();
+            ladAnchor.name = "anchor_LAD";
+            ladAnchor.position.set(0.40226, -0.24753, 0.00361);
+            arteryParent.add(ladAnchor);
+            vesselAnchors['LAD'] = ladAnchor;
+
+            // Pin 5 (LCX): Left Marginal Branch / Circumflex Branch along the left margin sulcus
+            const lcxAnchor = new THREE.Object3D();
+            lcxAnchor.name = "anchor_LCX";
+            lcxAnchor.position.set(0.41108, -0.07943, -0.10425);
+            arteryParent.add(lcxAnchor);
+            vesselAnchors['LCX'] = lcxAnchor;
+
+            // Pin 7 (RCA): Right Coronary Artery along the right coronary sulcus
+            const rcaAnchor = new THREE.Object3D();
+            rcaAnchor.name = "anchor_RCA";
+            rcaAnchor.position.set(0.06149, -0.22374, 0.16138);
+            arteryParent.add(rcaAnchor);
+            vesselAnchors['RCA'] = rcaAnchor;
+
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+        }, undefined, function(error) {
+            console.error("Error loading human_heart.glb:", error);
+            if (loadingIndicator) {
+                loadingIndicator.innerHTML = '<span style="color:#ef4444">Failed to load human_heart.glb</span>';
+            }
+        });
+
+        // Update tracking badges and directional arrows on animation frame
+        function updateVesselBadges() {
+            if (!downloadedHeartMesh) return;
+
+            const worldPos = new THREE.Vector3();
+
+            for (const vKey of ['LAD', 'LCX', 'RCA']) {
+                const anchor = vesselAnchors[vKey];
+                const badge = document.getElementById(`badge-${vKey.toLowerCase()}`);
+                const targetDot = document.getElementById(`target-dot-${vKey.toLowerCase()}`);
+                const arrowLine = document.getElementById(`arrow-line-${vKey.toLowerCase()}`);
+                if (!anchor || !badge) continue;
+
+                anchor.getWorldPosition(worldPos);
+                const screenPos = worldPos.clone().project(camera);
+
+                // Point behind camera
+                if (screenPos.z > 1) {
+                    badge.style.opacity = '0';
+                    if (targetDot) targetDot.style.opacity = '0';
+                    if (arrowLine) arrowLine.style.opacity = '0';
+                    continue;
+                }
+
+                const targetX = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+                const targetY = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight;
+
+                // Position the target dot right on the physical artery surface
+                if (targetDot) {
+                    targetDot.style.left = `${targetX}px`;
+                    targetDot.style.top = `${targetY}px`;
+                }
+
+                // Calculate offset position for the callout card
+                const offset = vesselOffsets[vKey];
+                let badgeX = targetX + offset.dx;
+                let badgeY = targetY + offset.dy;
+
+                // Keep badge inside middle area between panels
+                const minX = 410;
+                const maxX = window.innerWidth - 440;
+                badgeX = Math.max(minX, Math.min(maxX, badgeX));
+                badgeY = Math.max(90, Math.min(window.innerHeight - 80, badgeY));
+
+                badge.style.left = `${badgeX}px`;
+                badge.style.top = `${badgeY}px`;
+
+                // Calculate closest edge of badge for arrow origin
+                const halfW = 75;
+                const halfH = 20;
+                let startX = badgeX;
+                let startY = badgeY;
+                if (targetX < badgeX - halfW) {
+                    startX = badgeX - halfW;
+                } else if (targetX > badgeX + halfW) {
+                    startX = badgeX + halfW;
+                }
+                if (targetY < badgeY - halfH) {
+                    startY = badgeY - halfH;
+                } else if (targetY > badgeY + halfH) {
+                    startY = badgeY + halfH;
+                }
+
+                // Update SVG arrow line pointing directly to the target dot on the artery
+                if (arrowLine) {
+                    arrowLine.setAttribute('x1', startX);
+                    arrowLine.setAttribute('y1', startY);
+                    arrowLine.setAttribute('x2', targetX);
+                    arrowLine.setAttribute('y2', targetY);
+                }
+
+                // Keep badges and arrows clearly visible
+                badge.style.opacity = '1';
+                if (targetDot) targetDot.style.opacity = '1';
+                if (arrowLine) arrowLine.style.opacity = '1';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            updateVesselBadges();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ==========================================
+        // 3. HARDCODED SCHEMA
+        // ==========================================
+        const featureSchema = {
+            "Age": {"dtype": "int64", "min": 30.0, "max": 86.0},
+            "Weight": {"dtype": "int64", "min": 48.0, "max": 120.0},
+            "Length": {"dtype": "int64", "min": 140.0, "max": 188.0},
+            "Sex": {"dtype": "float64", "allowed_values": [1.0, 0.0]},
+            "BMI": {"dtype": "float64", "min": 18.0, "max": 41.0},
+            "DM": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "HTN": {"dtype": "float64", "allowed_values": [1.0, 0.0]},
+            "Current Smoker": {"dtype": "float64", "allowed_values": [1.0, 0.0]},
+            "EX-Smoker": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "FH": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Obesity": {"dtype": "float64", "allowed_values": [1.0, 0.0]},
+            "CRF": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "CVA": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Airway disease": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Thyroid Disease": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "CHF": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "DLP": {"dtype": "float64", "allowed_values": [1.0, 0.0]},
+            "BP": {"dtype": "int64", "min": 90.0, "max": 190.0},
+            "PR": {"dtype": "int64", "min": 50.0, "max": 110.0},
+            "Edema": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Weak Peripheral Pulse": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Lung rales": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Systolic Murmur": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Diastolic Murmur": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Typical Chest Pain": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Dyspnea": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Function Class": {"dtype": "int64", "allowed_values": [0.0, 1.0, 2.0, 3.0]},
+            "Atypical": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Nonanginal": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "LowTH Ang": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Q Wave": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "St Elevation": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "St Depression": {"dtype": "float64", "allowed_values": [1.0, 0.0]},
+            "Tinversion": {"dtype": "float64", "allowed_values": [1.0, 0.0]},
+            "LVH": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "Poor R Progression": {"dtype": "float64", "allowed_values": [0.0, 1.0]},
+            "BBB": {"dtype": "object", "allowed_values": ["N", "LBBB", "RBBB"]},
+            "FBS": {"dtype": "int64", "min": 62.0, "max": 400.0},
+            "CR": {"dtype": "float64", "min": 0.5, "max": 2.2},
+            "TG": {"dtype": "int64", "min": 37.0, "max": 1050.0},
+            "LDL": {"dtype": "int64", "min": 18.0, "max": 232.0},
+            "HDL": {"dtype": "float64", "min": 15.9, "max": 111.0},
+            "BUN": {"dtype": "int64", "min": 6.0, "max": 52.0},
+            "ESR": {"dtype": "int64", "min": 1.0, "max": 90.0},
+            "HB": {"dtype": "float64", "min": 8.9, "max": 17.6},
+            "K": {"dtype": "float64", "min": 3.0, "max": 6.6},
+            "Na": {"dtype": "int64", "min": 128.0, "max": 156.0},
+            "WBC": {"dtype": "int64", "min": 3700.0, "max": 18000.0},
+            "Lymph": {"dtype": "int64", "min": 7.0, "max": 60.0},
+            "Neut": {"dtype": "int64", "min": 32.0, "max": 89.0},
+            "PLT": {"dtype": "int64", "min": 25.0, "max": 742.0},
+            "EF-TTE": {"dtype": "int64", "min": 15.0, "max": 60.0},
+            "Region RWMA": {"dtype": "int64", "allowed_values": [0.0, 1.0, 2.0, 3.0, 4.0]},
+            "VHD": {"dtype": "object", "allowed_values": ["N", "mild", "Moderate", "Severe"]}
+        };
+
+        // Section groupings — ordered exactly as fields appear in schema
+        const sections = {
+            "Demographics":      ["Age","Sex","Weight","Length","BMI"],
+            "Medical History":   ["DM","HTN","Current Smoker","EX-Smoker","FH","Obesity","CRF","CVA","Airway disease","Thyroid Disease","CHF","DLP"],
+            "Vitals & Symptoms": ["BP","PR","Edema","Weak Peripheral Pulse","Lung rales","Systolic Murmur","Diastolic Murmur","Typical Chest Pain","Dyspnea","Function Class","Atypical","Nonanginal","LowTH Ang"],
+            "ECG Findings":      ["Q Wave","St Elevation","St Depression","Tinversion","LVH","Poor R Progression","BBB"],
+            "Laboratory Results":["FBS","CR","TG","LDL","HDL","BUN","ESR","HB","K","Na","WBC","Lymph","Neut","PLT"],
+            "Echocardiography":  ["EF-TTE","Region RWMA","VHD"]
+        };
+
+        // Official clinical standard reference ranges (NIH MedlinePlus & Mayo Clinic guidelines)
+        const labReferenceRanges = {
+            "FBS": "70 – 99 mg/dL",
+            "CR": "0.6 – 1.3 mg/dL",
+            "TG": "< 150 mg/dL",
+            "LDL": "< 100 mg/dL",
+            "HDL": "> 40 mg/dL",
+            "BUN": "6 – 20 mg/dL",
+            "ESR": "0 – 20 mm/hr",
+            "HB": "12.0 – 17.5 g/dL",
+            "K": "3.5 – 5.0 mEq/L",
+            "Na": "135 – 145 mEq/L",
+            "WBC": "4,000 – 11,000 /µL",
+            "Lymph": "20 – 40%",
+            "Neut": "40 – 60%",
+            "PLT": "150 – 450 (x10³/µL)"
+        };
+
+        const fieldsContainer = document.getElementById('dynamic-fields');
+
+        for (const [sectionName, fieldList] of Object.entries(sections)) {
+            // Section divider header
+            const sectionHeader = document.createElement('div');
+            sectionHeader.className = 'form-section';
+            sectionHeader.innerText = sectionName;
+            fieldsContainer.appendChild(sectionHeader);
+
+            for (const colName of fieldList) {
+                const details = featureSchema[colName];
+                if (!details) continue;
+
+                const formGroup = document.createElement('div');
+                formGroup.className = 'form-group';
+
+                const label = document.createElement('label');
+                const nameSpan = document.createElement('span');
+                nameSpan.innerText = colName;
+                label.appendChild(nameSpan);
+
+                // Show clinical reference range ONLY for Laboratory Results
+                if (sectionName === "Laboratory Results" && labReferenceRanges[colName]) {
+                    const rangeSpan = document.createElement('span');
+                    rangeSpan.className = 'label-range';
+                    rangeSpan.innerText = labReferenceRanges[colName];
+                    label.appendChild(rangeSpan);
+                }
+                formGroup.appendChild(label);
+
+                if (details.allowed_values) {
+                    const select = document.createElement('select');
+                    select.name = colName;
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = "";
+                    defaultOpt.innerText = "-- Select -- (Optional)";
+                    select.appendChild(defaultOpt);
+
+                    const isBinary = details.allowed_values.length === 2 &&
+                                     details.allowed_values.includes(0.0) &&
+                                     details.allowed_values.includes(1.0);
+                    details.allowed_values.forEach(val => {
+                        const opt = document.createElement('option');
+                        opt.value = val;
+                        if (isBinary) {
+                            opt.innerText = (colName === "Sex") ? (val === 1.0 ? "Male" : "Female") : (val === 1.0 ? "Yes" : "No");
+                        } else {
+                            opt.innerText = val;
+                        }
+                        select.appendChild(opt);
+                    });
+                    formGroup.appendChild(select);
+                } else {
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.step = 'any';
+                    input.name = colName;
+                    input.placeholder = "Optional";
+
+                    // Instantly unfocus on wheel so the page/panel scrolls smoothly
+                    // and the numerical value never changes accidentally!
+                    input.addEventListener('wheel', function() {
+                        this.blur();
+                    }, { passive: true });
+
+                    formGroup.appendChild(input);
+                }
+                fieldsContainer.appendChild(formGroup);
+            }
+        }
+
+        // Global wheel safety listener: if user scrolls anywhere while focused on an input, blur it immediately
+        document.addEventListener('wheel', function() {
+            if (document.activeElement && document.activeElement.type === 'number') {
+                document.activeElement.blur();
+            }
+        }, { passive: true });
+
+
+        // ==========================================
+        // 4. HANDLE PREDICTION & 3D COLORING
+        // ==========================================
+        const API_URL = "http://127.0.0.1:8000";
+
+        document.getElementById('clinical-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const patientData = {};
+            
+            for (const [key, value] of formData.entries()) {
+                if (value !== "") {
+                    if (!isNaN(value)) {
+                        patientData[key] = parseFloat(value);
+                    } else {
+                        patientData[key] = value;
+                    }
+                }
+            }
+
+            try {
+                const btn = document.getElementById('predict-btn');
+                const originalText = btn.innerText;
+                btn.innerText = "Analyzing Risk...";
+                
+                const response = await fetch(`${API_URL}/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ features: patientData })
+                });
+                
+                const result = await response.json();
+                btn.innerText = originalText;
+
+                if (result.status === "success") {
+                    document.getElementById('risks-placeholder').style.display = 'none';
+                    updateDashboard(result.risk_scores);
+                } else {
+                    alert("Error processing data. Check backend logs.");
+                }
+            } catch (error) {
+                alert("Failed to connect to backend API. Please ensure uvicorn is running on port 8000!");
+            }
+        });
+
+        function updateDashboard(risks) {
+            const risksContainer = document.getElementById('risks-container');
+            risksContainer.innerHTML = '';
+
+            for (const [target, percentage] of Object.entries(risks)) {
+                let colorHexCode = 0x22c55e; // Green
+                let colorCss = "#22c55e";
+
+                if (percentage >= 50) { colorHexCode = 0xef4444; colorCss = "#ef4444"; } 
+                else if (percentage >= 30) { colorHexCode = 0xeab308; colorCss = "#eab308"; } 
+
+                // Full Name mapping for display
+                let fullName = target;
+                if (target === 'CAD') fullName = "Overall Coronary Disease";
+                if (target === 'LAD') fullName = "Left Anterior Descending";
+                if (target === 'LCX') fullName = "Left Circumflex";
+                if (target === 'RCA') fullName = "Right Coronary Artery";
+
+                if (target === 'CAD') {
+                    // SVG Circle Circumference = 2 * pi * r = 2 * 3.14159 * 40 = ~251.2
+                    const offset = 251.2 - (251.2 * percentage / 100);
+                    
+                    risksContainer.innerHTML += `
+                        <div class="risk-item" style="--risk-color: ${colorCss}; text-align: center; padding-top: 30px;">
+                            <div class="risk-label" style="font-size: 24px;">${target}</div>
+                            <div class="risk-desc">${fullName}</div>
+                            
+                            <div class="circle-container">
+                                <svg viewBox="0 0 100 100" class="circular-progress">
+                                    <circle cx="50" cy="50" r="40" class="bg"></circle>
+                                    <circle cx="50" cy="50" r="40" class="progress" style="stroke: ${colorCss}; stroke-dasharray: 251.2; stroke-dashoffset: ${offset};"></circle>
+                                </svg>
+                                <div class="circle-percentage" style="color: ${colorCss}">${percentage}%</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Standard Horizontal Bar UI for the Specific Arteries
+                    risksContainer.innerHTML += `
+                        <div class="risk-item" style="--risk-color: ${colorCss};">
+                            <div class="risk-header">
+                                <div>
+                                    <div class="risk-label">${target}</div>
+                                    <div class="risk-desc">${fullName}</div>
+                                </div>
+                                <div class="risk-value" style="color: ${colorCss}">${percentage}%</div>
+                            </div>
+                            <div class="risk-bar-bg">
+                                <div class="risk-bar-fill" style="width: ${percentage}%; background-color: ${colorCss}; box-shadow: 0 0 10px ${colorCss};"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            // ==========================================
+            // PRESERVE ORIGINAL 3D HEART TEXTURES & UPDATE RISK CALLOUTS
+            // The 3D heart model, muscle, veins, fat, and valves remain 100% in their
+            // original realistic anatomical textures without any distortion or tinting.
+            // Risk inference is denoted via dynamic callout arrows, target dots, and badges.
+            // ==========================================
+            const targetVessels = ['LAD', 'LCX', 'RCA'];
+            targetVessels.forEach(vKey => {
+                    const pct = risks[vKey] || 0;
+                    let vesselCss = '#22c55e';
+                    let statusText = `${pct}% Low Risk`;
+
+                    if (pct >= 50) {
+                        vesselCss = '#ef4444';
+                        statusText = `${pct}% Stenosis (High Risk)`;
+                    } else if (pct >= 30) {
+                        vesselCss = '#eab308';
+                        statusText = `${pct}% Borderline Risk`;
+                    }
+
+                    const badge = document.getElementById(`badge-${vKey.toLowerCase()}`);
+                    const scoreEl = document.getElementById(`score-${vKey.toLowerCase()}`);
+                    const dot = document.getElementById(`dot-${vKey.toLowerCase()}`);
+                    const targetDot = document.getElementById(`target-dot-${vKey.toLowerCase()}`);
+                    const arrowLine = document.getElementById(`arrow-line-${vKey.toLowerCase()}`);
+                    const arrowPoly = document.getElementById(`arrow-poly-${vKey.toLowerCase()}`);
+
+                    if (arrowLine) {
+                        arrowLine.setAttribute('stroke', vesselCss);
+                        arrowLine.style.filter = `drop-shadow(0 0 6px ${vesselCss})`;
+                    }
+                    if (arrowPoly) {
+                        arrowPoly.setAttribute('fill', vesselCss);
+                    }
+                    if (targetDot) {
+                        targetDot.style.borderColor = vesselCss;
+                        targetDot.style.background = vesselCss;
+                        targetDot.style.boxShadow = `0 0 12px ${vesselCss}, 0 0 25px ${vesselCss}`;
+                    }
+                    if (badge && scoreEl && dot) {
+                        badge.style.borderColor = vesselCss;
+                        badge.style.boxShadow = `0 6px 25px ${vesselCss}40`;
+                        dot.style.background = vesselCss;
+                        dot.style.boxShadow = `0 0 12px ${vesselCss}`;
+                        scoreEl.style.color = vesselCss;
+                        scoreEl.innerText = statusText;
+                    }
+                });
+        }
+    </script>
+</body>
+</html>
